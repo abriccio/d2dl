@@ -14,9 +14,6 @@ typedef struct D2DLContext {
     IDWriteTextFormat *text_format;
 } D2DLContext;
 
-static D2DPoint circle_pos = {0};
-static D2DPoint circle_d = {10, 10};
-
 static ID2D1SolidColorBrush *createBrushForColor(D2DLContext *ctx, D2DColor color) {
     ID2D1SolidColorBrush *brush = NULL;
     HRESULT hr = ctx->rt->CreateSolidColorBrush(
@@ -222,75 +219,3 @@ void d2dl_setVisible(D2DLContext *c, bool visible) {
     ShowWindow(c->window, visible ? SW_SHOW : SW_HIDE);
 }
 
-
-#if 0
-
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-int WINAPI wWinMain(HINSTANCE hInstance,HINSTANCE prevInstance,
-                    PWSTR pCmdLine, int nCmdShow)
-{
-    const char class_name[] = "WIN32_WINDOW";
-    WNDCLASS wc = {0};
-    wc.lpfnWndProc = WindowProc;
-    wc.hInstance = hInstance;
-    wc.lpszClassName = class_name;
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    RegisterClass(&wc);
-    
-    D2DLContext *ctx = (D2DLContext*)malloc(sizeof(D2DLContext));
-
-    HWND hwnd = CreateWindow(class_name, class_name, WS_OVERLAPPEDWINDOW,
-                             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                         CW_USEDEFAULT, NULL, NULL, hInstance, ctx);
-    if (hwnd == NULL) {
-        fprintf(stderr, "CreateWindow failed\n");
-        return 0;
-    }
-    ctx->window = hwnd;
-    d2dl_createFactory(ctx);
-    d2dl_createRenderTarget(ctx);
-    d2dl_createDirectWriteFactory(ctx);
-    d2dl_loadFont(ctx, L"Verdana", 32.f);
-
-    ShowWindow(hwnd, nCmdShow);
-
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0) > 0)
-    {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-
-    d2dl_deinit(ctx);
-    return 0;
-}
-
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_CREATE) {
-        LPCREATESTRUCT pcs = (LPCREATESTRUCT)lParam;
-        D2DLContext *ctx = (D2DLContext *)pcs->lpCreateParams;
-        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)ctx);
-        return 1;
-    }
-    D2DLContext *ctx = (D2DLContext*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-    switch (msg) {
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        return 0;
-    case WM_DISPLAYCHANGE:
-        InvalidateRect(hwnd, NULL, false);
-        return 0;
-    case WM_SIZE:
-        ctx->rt->Resize({(UINT)LOWORD(lParam), (UINT)HIWORD(lParam)});
-        return 0;
-    case WM_PAINT:
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-        d2dl_paint(ctx, rc);
-        return 0;
-    }
-
-    return DefWindowProc(hwnd, msg, wParam, lParam);
-}
-#endif
