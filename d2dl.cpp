@@ -12,19 +12,26 @@ typedef struct D2DLContext {
     IDWriteFactory *dwrite_factory;
     // TODO: Support loading an arbitrary number of these
     IDWriteTextFormat *text_format;
+
+    ID2D1SolidColorBrush *solid_color;
+
+    void *user;
 } D2DLContext;
 
-static ID2D1SolidColorBrush *createBrushForColor(D2DLContext *ctx, D2DColor color) {
-    ID2D1SolidColorBrush *brush = NULL;
-    HRESULT hr = ctx->rt->CreateSolidColorBrush(
-        {.r = color.r, .g = color.g, .b = color.b, .a = color.a},
-        &brush
-    );
-    if (!SUCCEEDED(hr)) {
-        log_err_return_null("Brush create failed");
-    }
+static int globalOpenGUICount = 0;
 
-    return brush;
+static void setBrushColor(D2DLContext *ctx, D2DColor color) {
+    if (!ctx->solid_color) {
+        HRESULT hr = ctx->rt->CreateSolidColorBrush(
+            {.r = color.r, .g = color.g, .b = color.b, .a = color.a},
+            &ctx->solid_color
+        );
+        if (!SUCCEEDED(hr)) {
+            log_err_return("Brush create failed");
+        }
+    } else {
+        ctx->solid_color->SetColor({.r = color.r, .g = color.g, .b = color.b, .a = color.a});
+    }
 }
 
 void d2dl_beginDrawing(D2DLContext *ctx) {
@@ -43,84 +50,78 @@ void d2dl_clear(D2DLContext *ctx, D2DColor color) {
 }
 
 void d2dl_drawRect(D2DLContext *ctx, D2DRect rect, float stroke_width, D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     ctx->rt->DrawRectangle(
         {.left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.bottom},
-        brush,
+        ctx->solid_color,
         stroke_width
     );
-
-    brush->Release();
 }
 
 void d2dl_fillRect(D2DLContext *ctx, D2DRect rect, D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     ctx->rt->FillRectangle(
         {.left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.bottom},
-        brush
+        ctx->solid_color
     );
-
-    brush->Release();
 }
 
 void d2dl_drawRoundedRect(D2DLContext *ctx, D2DRect rect, float radius,
                           float stroke_width, D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     D2D1_RECT_F reg_rect = {.left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.bottom};
     ctx->rt->DrawRoundedRectangle(
         {.rect = reg_rect, .radiusX = radius, .radiusY = radius},
-        brush, stroke_width
+        ctx->solid_color, stroke_width
     );
-
-    brush->Release();
 }
 
 void d2dl_fillRoundedRect(D2DLContext *ctx, D2DRect rect, float radius,
                           D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     D2D1_RECT_F reg_rect = {.left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.bottom};
     ctx->rt->FillRoundedRectangle(
         {.rect = reg_rect, .radiusX = radius, .radiusY = radius},
-        brush
+        ctx->solid_color
     );
-
-    brush->Release();
 }
 
 void d2dl_drawEllipse(D2DLContext *ctx, D2DPoint center, float rx, float ry,
                       float stroke_width, D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     ctx->rt->DrawEllipse(
         {{center.x, center.y}, rx, ry},
-        brush,
+        ctx->solid_color,
         stroke_width
     );
-
-    brush->Release();
 }
 
 void d2dl_fillEllipse(D2DLContext *ctx, D2DPoint center, float rx, float ry,
                       D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     ctx->rt->FillEllipse(
         {{center.x, center.y}, rx, ry},
-        brush
+        ctx->solid_color
     );
+}
 
-    brush->Release();
+void d2dl_loadFont(D2DLContext *ctx, const wchar_t *font_name, float size) {
+    // TODO: Implement loading different font styles
+    ctx->dwrite_factory->CreateTextFormat(
+        font_name, NULL, DWRITE_FONT_WEIGHT_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, L"",
+        &ctx->text_format);
 }
 
 void d2dl_drawText(D2DLContext *ctx, const wchar_t *text, D2DRect rect, D2DColor color) {
-    auto brush = createBrushForColor(ctx, color);
+    setBrushColor(ctx, color);
     ctx->text_format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
     ctx->text_format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     size_t len = wcslen(text);
     ctx->rt->DrawText(text, len, ctx->text_format,
         {.left = rect.left, .top = rect.top, .right = rect.right, .bottom = rect.bottom},
-        brush
+        ctx->solid_color
     );
-
-    brush->Release();
 }
 
 D2DSize d2dl_getRenderSize(D2DLContext *ctx) {
@@ -154,13 +155,6 @@ static void d2dl_createDirectWriteFactory(D2DLContext *ctx) {
     }
 }
 
-void d2dl_loadFont(D2DLContext *ctx, const wchar_t *font_name, float size) {
-    // TODO: Implement loading different font styles
-    ctx->dwrite_factory->CreateTextFormat(
-        font_name, NULL, DWRITE_FONT_WEIGHT_NORMAL,
-        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, L"",
-        &ctx->text_format);
-}
 
 static void d2dl_createRenderTarget(D2DLContext *ctx) {
     RECT rc;
@@ -182,10 +176,13 @@ static void d2dl_createRenderTarget(D2DLContext *ctx) {
 }
 
 D2DLContext *d2dl_initDesktopWindow(int width, int height, const char *window_title) {
-    D2DLContext *ctx = (D2DLContext*)malloc(sizeof(D2DLContext));
+    D2DLContext *ctx = (D2DLContext*)calloc(0, sizeof(D2DLContext));
     if (ctx == NULL) {
         log_err_return_null("D2DLContext allocation failed")
     }
+    memset(ctx, 0, sizeof(D2DLContext));
+    d2dl_createFactory(ctx);
+    d2dl_createDirectWriteFactory(ctx);
     HWND hwnd = CreateWindow(window_title, window_title, WS_OVERLAPPEDWINDOW,
                              CW_USEDEFAULT, CW_USEDEFAULT, width,
                          height, NULL, NULL, NULL, ctx);
@@ -193,16 +190,51 @@ D2DLContext *d2dl_initDesktopWindow(int width, int height, const char *window_ti
         log_err_return_null("CreateWindow failed");
     }
     ctx->window = hwnd;
-    d2dl_createFactory(ctx);
     d2dl_createRenderTarget(ctx);
-    d2dl_createDirectWriteFactory(ctx);
 
     ShowWindow(hwnd, SW_SHOW);
     return ctx;
 }
 
+static LRESULT CALLBACK windowProc(HWND , UINT , WPARAM , LPARAM );
+
+D2DLContext *d2dl_initChildWindow(void *user, int width, int height,
+                                  const char *window_title) {
+    D2DLContext *ctx = (D2DLContext*)malloc(sizeof(D2DLContext));
+    if (ctx == NULL) {
+        log_err_return_null("D2DLContext allocation failed")
+    }
+    
+    memset(ctx, 0, sizeof(D2DLContext));
+        
+    if (globalOpenGUICount++ == 0) {
+		WNDCLASS windowClass = {};
+		windowClass.lpfnWndProc = windowProc;
+		windowClass.lpszClassName = window_title;
+		windowClass.hCursor = LoadCursor(NULL, IDC_ARROW);
+		windowClass.style = CS_DBLCLKS;
+		RegisterClass(&windowClass);
+	}
+	
+    d2dl_createFactory(ctx);
+    d2dl_createDirectWriteFactory(ctx);
+    
+    HWND hwnd = CreateWindow(window_title, window_title, WS_CHILDWINDOW | WS_CLIPSIBLINGS,
+                             CW_USEDEFAULT, CW_USEDEFAULT, width,
+                         height, GetDesktopWindow(), NULL, NULL, ctx);
+    if (hwnd == NULL) {
+        log_err_return_null("CreateWindow failed");
+    }
+    ctx->window = hwnd;
+    ctx->user = user;
+    d2dl_createRenderTarget(ctx);
+
+    return ctx;
+}
+
 void d2dl_deinit(D2DLContext *c) {
     DestroyWindow(c->window);
+    c->solid_color->Release();
     c->rt->Release();
     c->factory->Release();
     c->dwrite_factory->Release();
@@ -219,3 +251,30 @@ void d2dl_setVisible(D2DLContext *c, bool visible) {
     ShowWindow(c->window, visible ? SW_SHOW : SW_HIDE);
 }
 
+static LRESULT CALLBACK windowProc(HWND window, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_CREATE) {
+        LPCREATESTRUCT pcs = (LPCREATESTRUCT)lParam;
+        D2DLContext *ctx = (D2DLContext *)pcs->lpCreateParams;
+        SetWindowLongPtr(window, GWLP_USERDATA, (LONG_PTR)ctx);
+        return 1;
+    }
+    D2DLContext *ctx = (D2DLContext*)GetWindowLongPtr(window, GWLP_USERDATA);
+
+    switch (msg) {
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+        case WM_SIZE:
+            if (!ctx->rt) {
+                log_err_continue("Can't handle WM_SIZE yet");
+                break;
+            }
+            d2dl_setRenderSize(ctx, (D2DSize){(float)LOWORD(lParam), (float)HIWORD(lParam)});
+            return 0;
+        case WM_PAINT:
+            arbor_gui_render(ctx->user);
+            return 0;
+    }
+
+    return DefWindowProc(window, msg, wParam, lParam);
+}

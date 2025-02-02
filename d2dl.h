@@ -9,9 +9,11 @@ typedef uint8_t u8;
 typedef uint32_t u32;
 typedef uintptr_t usize;
 
-#define log_err_return(S) fprintf(stderr, "D2DL error: (S)\n"); return;
+#define log_err_continue(S) fprintf(stderr, "D2DL error: " S "\n")
 
-#define log_err_return_null(S) fprintf(stderr, "D2DL error: (S)\n"); return NULL;
+#define log_err_return(S) fprintf(stderr, "D2DL error: " S "\n"); return;
+
+#define log_err_return_null(S) fprintf(stderr, "D2DL error: " S "\n"); return NULL;
 
 // PUBLIC API //
 #ifdef __cplusplus
@@ -43,6 +45,7 @@ typedef struct D2DRect {
 typedef struct D2DLContext D2DLContext;
 
 D2DLContext *d2dl_initDesktopWindow(int width, int height, const char *window_title);
+D2DLContext *d2dl_initChildWindow(void *user, int width, int height, const char *window_title);
 void d2dl_deinit(D2DLContext*);
 void d2dl_beginDrawing(D2DLContext *ctx);
 void d2dl_endDrawing(D2DLContext *ctx);
@@ -63,6 +66,9 @@ void d2dl_setRenderSize(D2DLContext *ctx, D2DSize size);
 void d2dl_loadFont(D2DLContext *ctx, const wchar_t *font_name, float size);
 void d2dl_setParent(D2DLContext*, HWND hwnd);
 void d2dl_setVisible(D2DLContext*, bool);
+
+// Extern library render
+void arbor_gui_render(void *);
 
 #ifdef __cplusplus
 }
